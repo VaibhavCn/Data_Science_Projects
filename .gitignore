@@ -1,0 +1,10 @@
+data/
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+*.zip
+*.csv
+*.parquet
+hm-recommendations/data/
+hm-recommendations/venv/
