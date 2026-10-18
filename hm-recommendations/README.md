@@ -21,51 +21,28 @@ graph LR
 | Validation | 2020-36 | 14.49% | 0.02790 |
 | Test | 2020-37 | 15.81% | 0.03157 |
 
-## Baselines and Ablations
-
-All numbers are offline backtest on held-out week 2020-37, same candidate-eligible customers.
-
-| Setup | Candidate recall | MAP@12 |
-|---|---|---|
-| Popularity only (s1_recent top-12, no personalization) | n/a | [x] |
-| Repurchase only (s3, ordered by recency) | [x] | [x] |
-| Merged candidates, ranked by n_sources (no model) | 15.81% | [x] |
-| **Full pipeline (candidates + LGBMRanker)** | **15.81%** | **0.03157** |
-
-**Candidate-source ablation** (drop one source, retrain, re-evaluate):
-
-| Dropped source | Recall | MAP@12 | Δ MAP@12 |
-|---|---|---|---|
-| s1_recent | [x] | [x] | [x] |
-| s2_seasonal | [x] | [x] | [x] |
-| s3_repurchase | [x] | [x] | [x] |
-| s4_i2i | [x] | [x] | [x] |
-| s5_idx | [x] | [x] | [x] |
-| s6_cf8 / s6_cf52 | [x] | [x] | [x] |
-
 ## Findings
 
-- **The ranker adds value beyond candidate generation.** Ranking the same pool with the LGBMRanker lifts MAP@12 from [x] to 0.03157 ([+x%]).
-- **[Source] contributes the most.** Removing it costs [x] MAP@12, while [source] adds almost nothing, so it could be dropped to cut runtime.
-- **Candidate recall caps the system.** At 15.81% recall, [~84%] of purchased items never reach the ranker, so stage 1 is the main bottleneck, not stage 2.
-- **Product category dominates feature importance.** `department_name`, `colour_group_name` and `product_type_name` rank highest by split count. Split count favours high-cardinality categoricals, so I confirmed with [gain / SHAP]: [result].
-- **Where it fails:** [e.g. customers with no purchase history, or customers with fewer than N transactions, score MAP@12 of x vs y for repeat buyers].
+- **Stage 1 is the bottleneck.** Candidate recall is 15.81% on test, so roughly 84% of purchased items never reach the ranker. The ranker can only reorder what stage 1 supplies, so improving candidate generation has more headroom than tuning the ranker.
+- **Results are consistent across weeks, with some noise.** Validation (2020-36) scores MAP@12 0.02790 and test (2020-37) scores 0.03157. Both weeks show the same pattern, but the ~13% gap shows weekly variance is real.
+- **Product category drives the ranker.** `department_name`, `colour_group_name` and `product_type_name` are the top features by split count, followed by customer recency (`cust_last_tx_days`) and `age`. Split count favours high-cardinality categoricals, so this ranking is indicative, not conclusive.
 
 ## Limitations
 
-- Single hold-out week for test. Weekly MAP@12 is noisy, so I report validation (2020-36) alongside test, and I have not computed confidence intervals across multiple weeks.
-- The ranker is trained on one week of candidates, and hyperparameters come from a 4-point grid. Both are light.
-- The result is an offline backtest, not a Kaggle leaderboard submission, and is not directly comparable to leaderboard scores.
+- Single hold-out week for test. I report validation alongside it, but have not computed confidence intervals across multiple weeks.
+- The ranker is trained on one week of candidates, and hyperparameters come from a 4-point grid.
+- This is an offline backtest, not a Kaggle leaderboard submission, so it is not directly comparable to leaderboard scores.
 - Offline MAP@12 does not capture business metrics such as revenue, diversity or novelty.
+- No baseline or ablation comparisons yet. These are the next step.
 
 ## How I Would Test This Online
 
-- **Unit of randomization:** customer, with a stable hash so users keep one variant.
+- **Randomization:** by customer, using a stable hash so users stay in one variant.
 - **Control vs treatment:** current ranking (e.g. bestsellers) vs this model's top-12.
-- **Primary metric:** [click-through or purchase conversion on recommended items]. **Guardrails:** [revenue per user, return rate, catalog coverage].
-- **Sizing:** a power calculation on baseline conversion and the minimum effect worth shipping, then a fixed runtime of [N] weeks to cover weekly seasonality.
-- **Risks:** novelty effects, interference from shared inventory, and a cold-start segment that needs separate analysis.
-- **Offline-online gap:** offline MAP@12 is optimistic about repeat purchases, so I would validate against the A/B result before trusting offline gains.
+- **Metrics:** primary is purchase conversion on recommended items. Guardrails are revenue per user, return rate and catalog coverage.
+- **Sizing:** a power calculation on baseline conversion and the minimum effect worth shipping, run for full weeks to cover weekly seasonality.
+- **Risks:** novelty effects, shared-inventory interference, and cold-start customers needing a separate analysis.
+- **Offline-online gap:** offline MAP@12 favours repeat purchases, so I would trust the A/B result over the offline gain.
 
 ## Architecture
 
